@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>勤怠アプリ</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f4f4f4;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        input, button, select {
+            padding: 10px;
+            margin: 5px 0;
+        }
+        button {
+            width: 100%;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .section-heading {
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .time-select-group, .attendance-entry {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .time-select-group > div,
+        .attendance-entry > div {
+            flex: 1;
+            margin-right: 10px;
+        }
+        .time-select-group > div:last-child,
+        .attendance-entry > div:last-child {
+            margin-right: 0;
+        }
+        .time-select, .work-type-select, #attendanceDate, .salary-calc {
+            flex: 1;
+        }
+        .salary-calc-section {
+            margin-top: 20px;
+        }
+        .attendance-history {
+            margin-top: 40px;
+        }
+        ul {
+            padding-left: 20px;
+        }
+        li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 従業員ページ -->
+        <div class="section">
+            <h1 class="section-heading">従業員ページ</h1>
+            <div class="attendance-entry">
+                <div>
+                    <select id="employeeSelect">
+                        <option value="">従業員を選択</option>
+                    </select>
+                </div>
+                <div>
+                    <select id="workTypeSelect" class="work-type-select">
+                        <option value="">勤務内容を選択</option>
+                        <option value="営業">営業</option>
+                        <option value="会議">会議</option>
+                        <option value="事務">事務</option>
+                        <option value="その他">その他</option>
+                    </select>
+                </div>
+                <div>
+                    <input type="date" id="attendanceDate">
+                </div>
+            </div>
+            <div class="time-select-group">
+                <div>
+                    <select id="startTimeHour"></select> :
+                    <select id="startTimeMinute"></select>
+                </div>
+                <div>〜</div>
+                <div>
+                    <select id="endTimeHour"></select> :
+                    <select id="endTimeMinute"></select>
+                </div>
+            </div>
+            <button onclick="submitAttendance()">送信</button>
+        </div>
+
+        <!-- 管理者ページ -->
+        <div class="section">
+            <h1 class="section-heading">管理者ページ</h1>
+            <h2>従業員登録</h2>
+            <input type="text" id="employeeName" placeholder="従業員名">
+            <input type="number" id="employeeWage" placeholder="時給（円）">
+            <button onclick="registerEmployee()">従業員登録</button>
+            
+            <!-- 給与計算 -->
+            <div class="salary-calc-section">
+                <h2>給与計算</h2>
+                <select id="salaryEmployeeSelect">
+                    <option value="">従業員を選択</option>
+                    <!-- 従業員の選択肢がここに追加される -->
+                </select>
+                <input type="month" id="salaryMonth">
+                <button onclick="calculateSalary()">給与計算</button>
+                <div id="salaryResult"></div>
+            </div>
+        </div>
+
+        <!-- 勤怠履歴 -->
+        <div class="attendance-history">
+            <h2 class="section-heading">勤怠履歴</h2>
+            <ul id="attendanceList"></ul>
+        </div>
+    </div>
+
+    <script>
+        let employees = [];
+        let attendanceRecords = [];
+
+        function populateTimeSelects(selectId, start, end, increment = 1) {
+            const select = document.getElementById(selectId);
+            for (let i = start; i <= end; i += increment) {
+                const option = document.createElement('option');
+                option.value = i;
+                option.textContent = ('0' + i).slice(-2); // Always display 2 digits
+                select.appendChild(option);
+            }
+        }
+
+        function registerEmployee() {
+            const name = document.getElementById('employeeName').value.trim();
+            const wage = parseFloat(document.getElementById('employeeWage').value);
+            if (name && !isNaN(wage)) {
+                const employeeId = employees.length;
+                employees.push({ name, wage });
+                updateEmployeeSelects();
+                document.getElementById('employeeName').value = '';
+                document.getElementById('employeeWage').value = '';
+            } else {
+                alert('従業員名と時給を正しく入力してください。');
+            }
+        }
+
+        function updateEmployeeSelects() {
+            const selects = [document.getElementById('employeeSelect'), document.getElementById('salaryEmployeeSelect')];
+            selects.forEach(select => {
+                select.innerHTML = '<option value="">従業員を選択</option>';
+                employees.forEach((employee, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = employee.name;
+                    select.appendChild(option);
+                });
+            });
+        }
+
+        function submitAttendance() {
+            const employeeIndex = document.getElementById('employeeSelect').value;
+            const workType = document.getElementById('workTypeSelect').value;
+            const date = document.getElementById('attendanceDate').value;
+            const startHour = document.getElementById('startTimeHour').value;
+            const startMinute = document.getElementById('startTimeMinute').value;
+            const endHour = document.getElementById('endTimeHour').value;
+            const endMinute = document.getElementById('endTimeMinute').value;
+            if (employeeIndex && workType && date && startHour && startMinute && endHour && endMinute) {
+                const attendance = {
+                    employeeName: employees[employeeIndex].name,
+                    date: date,
+                    startTime: `${('0' + startHour).slice(-2)}:${('0' + startMinute).slice(-2)}`,
+                    endTime: `${('0' + endHour).slice(-2)}:${('0' + endMinute).slice(-2)}`,
+                    workType: workType
+                };
+                attendanceRecords.push(attendance);
+                displayAttendanceHistory();
+            } else {
+                alert('全てのフィールドを埋めてください。');
+            }
+        }
+
+        function displayAttendanceHistory() {
+            const list = document.getElementById('attendanceList');
+            list.innerHTML = '';
+            attendanceRecords.forEach(record => {
+                const listItem = document.createElement('li');
+                listItem.textContent = `${record.employeeName}さんが、${record.date} ${record.startTime}〜${record.endTime}に${record.workType}をしました！`;
+                list.appendChild(listItem);
+            });
+        }
+
+        function calculateSalary() {
+            const employeeIndex = document.getElementById('salaryEmployeeSelect').value;
+            const salaryMonth = document.getElementById('salaryMonth').value;
+            if (!employeeIndex || !salaryMonth) {
+                alert('従業員と対象の月を選択してください。');
+                return;
+            }
+
+            const targetRecords = attendanceRecords.filter(record => 
+                record.employeeName === employees[employeeIndex].name && record.date.startsWith(salaryMonth));
+            let totalMinutes = 0;
+            targetRecords.forEach(record => {
+                const [startHours, startMinutes] = record.startTime.split(':').map(Number);
+                const [endHours, endMinutes] = record.endTime.split(':').map(Number);
+                totalMinutes += (endHours * 60 + endMinutes) - (startHours * 60 + startMinutes);
+            });
+
+            const totalHours = totalMinutes / 60;
+            const salary = totalHours * employees[employeeIndex].wage;
+            document.getElementById('salaryResult').textContent = `計算結果: ${employees[employeeIndex].name}さんの給与は${salary.toFixed(2)}円です。`;
+        }
+
+        populateTimeSelects('startTimeHour', 0, 23);
+        populateTimeSelects('endTimeHour', 0, 23);
+        populateTimeSelects('startTimeMinute', 0, 59, 5);
+        populateTimeSelects('endTimeMinute', 0, 59, 5);
+    </script>
+</body>
+</html>
