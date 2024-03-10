@@ -21,9 +21,9 @@
         input, button, select {
             padding: 10px;
             margin: 5px 0;
+            width: 100%;
         }
         button {
-            width: 100%;
             background-color: #007bff;
             color: white;
             border: none;
@@ -42,31 +42,24 @@
             align-items: center;
             justify-content: space-between;
         }
-        .time-select-group > div,
-        .attendance-entry > div {
-            flex: 1;
+        .time-select-group > div, .attendance-entry > div {
             margin-right: 10px;
         }
-        .time-select-group > div:last-child,
-        .attendance-entry > div:last-child {
+        .time-select-group > div:last-child, .attendance-entry > div:last-child {
             margin-right: 0;
         }
-        .time-select, .work-type-select, #attendanceDate, .salary-calc {
-            flex: 1;
-        }
-        .salary-calc-section {
+        .salary-calc-section, .attendance-history {
             margin-top: 20px;
         }
-        .attendance-history {
-            margin-top: 40px;
-        }
         ul {
-            padding-left: 20px;
+            list-style-type: none;
+            padding: 0;
         }
         li {
             margin-bottom: 5px;
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="container">
@@ -94,12 +87,12 @@
             </div>
             <div class="time-select-group">
                 <div>
-                    <select id="startTimeHour"></select> :
+                    <select id="startTimeHour"></select>:
                     <select id="startTimeMinute"></select>
                 </div>
                 <div>〜</div>
                 <div>
-                    <select id="endTimeHour"></select> :
+                    <select id="endTimeHour"></select>:
                     <select id="endTimeMinute"></select>
                 </div>
             </div>
@@ -109,18 +102,13 @@
         <!-- 管理者ページ -->
         <div class="section">
             <h1 class="section-heading">管理者ページ</h1>
-            <h2>従業員登録</h2>
             <input type="text" id="employeeName" placeholder="従業員名">
             <input type="number" id="employeeWage" placeholder="時給（円）">
             <button onclick="registerEmployee()">従業員登録</button>
-            
-            <!-- 給与計算 -->
+
             <div class="salary-calc-section">
                 <h2>給与計算</h2>
-                <select id="salaryEmployeeSelect">
-                    <option value="">従業員を選択</option>
-                    <!-- 従業員の選択肢がここに追加される -->
-                </select>
+                <select id="salaryEmployeeSelect"><option value="">従業員を選択</option></select>
                 <input type="month" id="salaryMonth">
                 <button onclick="calculateSalary()">給与計算</button>
                 <div id="salaryResult"></div>
@@ -132,18 +120,33 @@
             <h2 class="section-heading">勤怠履歴</h2>
             <ul id="attendanceList"></ul>
         </div>
+
+        <!-- 勤務内容の分析 -->
+        <div class="section">
+            <h2 class="section-heading">勤務内容の分析</h2>
+            <canvas id="workTypeChart"></canvas>
+        </div>
     </div>
 
     <script>
         let employees = [];
         let attendanceRecords = [];
+        let workTypeChart;
 
-        function populateTimeSelects(selectId, start, end, increment = 1) {
+        document.addEventListener('DOMContentLoaded', function() {
+            populateTimeSelects('startTimeHour', 0, 23);
+            populateTimeSelects('endTimeHour', 0, 23);
+            populateTimeSelects('startTimeMinute', 0, 59);
+            populateTimeSelects('endTimeMinute', 0, 59);
+            updateEmployeeSelects();
+        });
+
+        function populateTimeSelects(selectId, start, end) {
             const select = document.getElementById(selectId);
-            for (let i = start; i <= end; i += increment) {
+            for (let i = start; i <= end; i++) {
                 const option = document.createElement('option');
                 option.value = i;
-                option.textContent = ('0' + i).slice(-2); // Always display 2 digits
+                option.textContent = ('0' + i).slice(-2);
                 select.appendChild(option);
             }
         }
@@ -152,26 +155,26 @@
             const name = document.getElementById('employeeName').value.trim();
             const wage = parseFloat(document.getElementById('employeeWage').value);
             if (name && !isNaN(wage)) {
-                const employeeId = employees.length;
                 employees.push({ name, wage });
                 updateEmployeeSelects();
                 document.getElementById('employeeName').value = '';
                 document.getElementById('employeeWage').value = '';
+                alert('従業員が登録されました。');
             } else {
                 alert('従業員名と時給を正しく入力してください。');
             }
         }
 
         function updateEmployeeSelects() {
-            const selects = [document.getElementById('employeeSelect'), document.getElementById('salaryEmployeeSelect')];
-            selects.forEach(select => {
-                select.innerHTML = '<option value="">従業員を選択</option>';
-                employees.forEach((employee, index) => {
-                    const option = document.createElement('option');
-                    option.value = index;
-                    option.textContent = employee.name;
-                    select.appendChild(option);
-                });
+            const employeeSelect = document.getElementById('employeeSelect');
+            const salaryEmployeeSelect = document.getElementById('salaryEmployeeSelect');
+            employeeSelect.innerHTML = '<option value="">従業員を選択</option>';
+            salaryEmployeeSelect.innerHTML = '<option value="">従業員を選択</option>';
+
+            employees.forEach((employee, index) => {
+                const option = new Option(employee.name, index);
+                employeeSelect.add(option);
+                salaryEmployeeSelect.add(option.cloneNode(true));
             });
         }
 
@@ -179,20 +182,22 @@
             const employeeIndex = document.getElementById('employeeSelect').value;
             const workType = document.getElementById('workTypeSelect').value;
             const date = document.getElementById('attendanceDate').value;
-            const startHour = document.getElementById('startTimeHour').value;
-            const startMinute = document.getElementById('startTimeMinute').value;
-            const endHour = document.getElementById('endTimeHour').value;
-            const endMinute = document.getElementById('endTimeMinute').value;
-            if (employeeIndex && workType && date && startHour && startMinute && endHour && endMinute) {
+            const startTimeHour = document.getElementById('startTimeHour').value;
+            const startTimeMinute = document.getElementById('startTimeMinute').value;
+            const endTimeHour = document.getElementById('endTimeHour').value;
+            const endTimeMinute = document.getElementById('endTimeMinute').value;
+
+            if (employeeIndex !== '' && workType && date && startTimeHour !== '' && endTimeHour !== '') {
                 const attendance = {
                     employeeName: employees[employeeIndex].name,
-                    date: date,
-                    startTime: `${('0' + startHour).slice(-2)}:${('0' + startMinute).slice(-2)}`,
-                    endTime: `${('0' + endHour).slice(-2)}:${('0' + endMinute).slice(-2)}`,
-                    workType: workType
+                    date,
+                    startTime: `${startTimeHour.padStart(2, '0')}:${startTimeMinute.padStart(2, '0')}`,
+                    endTime: `${endTimeHour.padStart(2, '0')}:${endTimeMinute.padStart(2, '0')}`,
+                    workType
                 };
                 attendanceRecords.push(attendance);
                 displayAttendanceHistory();
+                updateCharts();
             } else {
                 alert('全てのフィールドを埋めてください。');
             }
@@ -211,29 +216,65 @@
         function calculateSalary() {
             const employeeIndex = document.getElementById('salaryEmployeeSelect').value;
             const salaryMonth = document.getElementById('salaryMonth').value;
-            if (!employeeIndex || !salaryMonth) {
+            if (employeeIndex === '' || !salaryMonth) {
                 alert('従業員と対象の月を選択してください。');
                 return;
             }
-
+            const employee = employees[employeeIndex];
             const targetRecords = attendanceRecords.filter(record => 
-                record.employeeName === employees[employeeIndex].name && record.date.startsWith(salaryMonth));
+                record.employeeName === employee.name && record.date.startsWith(salaryMonth));
             let totalMinutes = 0;
             targetRecords.forEach(record => {
-                const [startHours, startMinutes] = record.startTime.split(':').map(Number);
-                const [endHours, endMinutes] = record.endTime.split(':').map(Number);
-                totalMinutes += (endHours * 60 + endMinutes) - (startHours * 60 + startMinutes);
+                const startParts = record.startTime.split(':');
+                const endParts = record.endTime.split(':');
+                const startMinutes = parseInt(startParts[0], 10) * 60 + parseInt(startParts[1], 10);
+                const endMinutes = parseInt(endParts[0], 10) * 60 + parseInt(endParts[1], 10);
+                totalMinutes += endMinutes - startMinutes;
             });
-
             const totalHours = totalMinutes / 60;
-            const salary = totalHours * employees[employeeIndex].wage;
-            document.getElementById('salaryResult').textContent = `計算結果: ${employees[employeeIndex].name}さんの給与は${salary.toFixed(2)}円です。`;
+            const salary = totalHours * employee.wage;
+            document.getElementById('salaryResult').textContent = `計算結果: ${employee.name}さんの給与は${salary.toFixed(2)}円です。`;
         }
 
-        populateTimeSelects('startTimeHour', 0, 23);
-        populateTimeSelects('endTimeHour', 0, 23);
-        populateTimeSelects('startTimeMinute', 0, 59, 5);
-        populateTimeSelects('endTimeMinute', 0, 59, 5);
+        function updateCharts() {
+            const ctx = document.getElementById('workTypeChart').getContext('2d');
+            const workTypeData = { '営業': 0, '会議': 0, '事務': 0, 'その他': 0 };
+            attendanceRecords.forEach(record => {
+                if (record.workType in workTypeData) {
+                    workTypeData[record.workType]++;
+                }
+            });
+
+            if (workTypeChart) workTypeChart.destroy();
+
+            workTypeChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(workTypeData),
+                    datasets: [{
+                        data: Object.values(workTypeData),
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.6)',
+                            'rgba(54, 162, 235, 0.6)',
+                            'rgba(255, 206, 86, 0.6)',
+                            'rgba(75, 192, 192, 0.6)'
+                        ],
+                        borderColor: 'rgba(255,255,255,1)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    legend: {
+                        position: 'top',
+                    },
+                    title: {
+                        display: true,
+                        text: '勤務内容の割合'
+                    }
+                }
+            });
+        }
     </script>
 </body>
 </html>
